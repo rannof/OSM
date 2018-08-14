@@ -43,7 +43,7 @@ class OSM(object):
     lonmin = -180.0
     maxlevel = 17
     maxtilecash = 500
-    def __init__(self, ax, tileurl="http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/", tilepat="{Z}/{Y}/{X}.png", tilearchive=TILESARCHIVE):
+    def __init__(self, ax, tileurl="http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/", tilepat="{Z}/{Y}/{X}.png", tilearchive=TILESARCHIVE, mplconnect=True):
         # constants and defaults
         self.cashedtiles = {}
         self.tilesorder = []
@@ -54,9 +54,13 @@ class OSM(object):
         self.lonmin = -180.0
         self.maxlevel = 17
         self.maxtilecash = 500
-
         # constants and defaults
         self.ax = ax  # where to plot tiles
+        self.ax.set_aspect('equal') # make sure it is equale aspect
+        self.canvas = self.ax.figure.canvas
+        if mplconnect:
+            self.mplconnect()
+        self._button = False
         self.http = Http()
         self.tileurl = tileurl
         self.tilepat = tilepat
@@ -66,7 +70,18 @@ class OSM(object):
         self.tilearchive = tilearchive
         # Add copyright text
         self.ax.text(0.99, 0.01, 'Leaflet | Tiles ' + u'\N{COPYRIGHT SIGN}' + 'Esri', color='#555555', ha='right', transform=ax.transAxes, name='Helvetica', fontsize=8, zorder=999)
+   
+    def mplconnect(self):
+        self.canvas.mpl_connect('draw_event', self.draw)
+        self.canvas.mpl_connect('button_press_event', self.click)
+        self.canvas.mpl_connect('button_release_event', self.unclick)        
+        
+    def click(self,event):
+        self._button = self.canvas._button
 
+    def unclick(self,event):
+        self._button = None
+        self.draw()
 
     def tile2image(self, datafile, limits=[latmin, latmax, lonmin, lonmax]):
         'add tile to axes images'
@@ -198,7 +213,12 @@ class OSM(object):
             if tID not in self.cashedtiles:  # if tiles are not already in cash
                 if t.startswith('http'):  # if we need to download
                     log.debug('Downloading {}'.format(t))
-                    datafile = StringIO(self.http.request(t)[1])  # download tile image to stream
+                    try:
+                        datafile = StringIO(self.http.request(t)[1])  # download tile image to stream
+                    except Exception as ex: # in case of disconnection
+                        log.warning(ex)
+                        self.http = Http()
+                        datafile = StringIO(self.http.request(t)[1])
                     if self.tilearchive:  # archive tile if we set the archive
                         d = datafile.read()  # read the downloaded data from stream
                         datafile.seek(0)  # rewind stream
@@ -220,13 +240,19 @@ class OSM(object):
                     self.cashedtiles.pop(old)
             else:
                 im = self.cashedtiles[tID]
-            self.ax.add_image(im)  # add image to axes
+            self.ax._set_artist_props(im)
+            self.ax.images.append(im)  # add image to axes
             self.currentimages.append(im)  # add image to current images list
+        self.ax.stale = True
 
-    def draw(self):
+    def draw(self,*args,**kwargs):
+        if self._button:
+                return # don't redraw while panning/zooming
+        log.info('Updating map, please hold...')
         self.ax.apply_aspect()  # make sure xlim and ylim are updated to screen size. this is because we use equal aspect and datalim. see matplotlib details on axes set_aspect function
         x0, x1 = self.ax.get_xlim()  # get requested limits of x axis
         y0, y1 = self.ax.get_ylim()  # get requested limits of y axis
         self.relimcorrected(x0, x1, y0, y1)  # make sure limits are not out of map phisical boundaries. see osm module for more details.
         tiles = self.gettiles(x0, x1, y0, y1)  # get the needed tiles from buffer or url. see osm module for more details
         self.plottiles(tiles)  # plot the tiles. see osm module for more details
+        log.info('Updating finished')
