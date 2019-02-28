@@ -19,7 +19,10 @@
 # *********************************************************************************
 import numpy as np
 import scipy.misc
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import BytesIO as StringIO
 import os
 from httplib2 import Http
 from PIL import Image
