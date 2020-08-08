@@ -1,10 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # /********************************************************************************
-#    Copyright (C) by Ran Novitsky Nof                                            *
+#    Copyright (C) by Ran Novitsky Nof, 2019                                      *
 #                                                                                 *
-#    This file is part of E2ReviewTool                                            *
 #                                                                                 *
-#    E2ReviewTool is free software: you can redistribute it and/or modify         *
+#    osm is free software: you can redistribute it and/or modify                  *
 #    it under the terms of the GNU Lesser General Public License as published by  *
 #    the Free Software Foundation, either version 3 of the License, or            *
 #    (at your option) any later version.                                          *
@@ -18,7 +17,6 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.        *
 # *********************************************************************************
 import numpy as np
-import scipy.misc
 try:
     from StringIO import StringIO
 except ImportError:
@@ -33,11 +31,16 @@ import logging
 logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%dT%H:%M:%S')
 log = logging.getLogger('OSM')
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.ERROR)
 
 # util class for Open Street Map
 
 TILESARCHIVE = os.path.split(__file__)[0] + os.sep + 'tiles'
+
+# For more urls see: https://leaflet-extras.github.io/leaflet-providers/preview/
+TILEURL = "http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/"
+# Make sure the pattern is changed accordingly
+TILEPAT = "{Z}/{Y}/{X}.png"
 
 class OSM(object):
     latmax = 90.0
@@ -46,7 +49,7 @@ class OSM(object):
     lonmin = -180.0
     maxlevel = 17
     maxtilecash = 500
-    def __init__(self, ax, tileurl="http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/", tilepat="{Z}/{Y}/{X}.png", tilearchive=TILESARCHIVE, mplconnect=True):
+    def __init__(self, ax, tileurl=TILEURL, tilepat=TILEPAT, tilearchive=TILESARCHIVE, mplconnect=True):
         # constants and defaults
         self.cashedtiles = {}
         self.tilesorder = []
@@ -90,7 +93,7 @@ class OSM(object):
         'add tile to axes images'
         y0, y1, x0, x1 = limits  # get tile extent
         try:
-            data = scipy.misc.fromimage(Image.open(datafile))  # read tile image and convert to 2D array
+            data = np.array(Image.open(datafile))  # read tile image and convert to 2D array
         except IOError:
             log.error("Bad image file: {}. Please remove the file for next time.".format(datafile))
             data = np.zeros((256, 256, 3))  # use black image with red X.
@@ -228,11 +231,11 @@ class OSM(object):
                         archivedir, fname = os.path.split(os.sep.join([self.tilearchive, tID]))  # get archive path of tile
                         if not os.path.exists(archivedir):  # make sure archive directory exists
                             os.makedirs(archivedir)  # or create it
-                        with open(os.sep.join([archivedir, fname]), 'w') as f:
+                        with open(os.sep.join([archivedir, fname]), 'wb') as f:
                             f.write(d)  # save tile to archive
                 else:
                     log.debug('Reading tile from {}'.format(t))
-                    datafile = open(t, 'r')  # or get the tile file name
+                    datafile = open(t, 'rb')  # or get the tile file name
                 limits = self.tiles2lims(*self.tilepath2zoomxy(t))
                 im = self.tile2image(datafile, limits)
                 datafile.close()
@@ -246,13 +249,17 @@ class OSM(object):
             self.ax._set_artist_props(im)
             self.ax.images.append(im)  # add image to axes
             self.currentimages.append(im)  # add image to current images list
+            log.debug('add {im} to cache'.format(im=im))
         self.ax.stale = True
 
     def draw(self,*args,**kwargs):
         if self._button:
                 return # don't redraw while panning/zooming
         log.info('Updating map, please hold...')
-        self.ax.apply_aspect()  # make sure xlim and ylim are updated to screen size. this is because we use equal aspect and datalim. see matplotlib details on axes set_aspect function
+        try:
+            self.ax.apply_aspect()  # make sure xlim and ylim are updated to screen size. this is because we use equal aspect and datalim. see matplotlib details on axes set_aspect function
+        except ValueError:
+            log.debug('some error with set aspect')
         x0, x1 = self.ax.get_xlim()  # get requested limits of x axis
         y0, y1 = self.ax.get_ylim()  # get requested limits of y axis
         self.relimcorrected(x0, x1, y0, y1)  # make sure limits are not out of map phisical boundaries. see osm module for more details.
