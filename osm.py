@@ -178,7 +178,7 @@ class OSM(object):
 
     def tilepath2zoomxy(self, tile):
         'convert tile path to lat-lon indices and zoom'
-        tileorder = os.path.splitext(self.tilepat.replace('{', '').replace('}', ''))[0].split('/')[-3:]
+        tileorder = os.path.splitext(self.tilepat.replace('{', '').replace('}', ''))[0].split(os.sep)[-3:]
         tilexyz = dict(zip(tileorder, os.path.splitext(tile)[0].split(os.sep)[-3:]))
         return int(tilexyz['X']), int(tilexyz['Y']), int(tilexyz['Z'])
 
