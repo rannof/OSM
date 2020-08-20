@@ -20,6 +20,10 @@ Install requirements
 ```
 pip install -r requirements.txt 
 ```
+or
+```
+conda install -c conda-forge --file requirements.txt
+```
 Or use python virtual environment:
 1. Go into the OSM folder
 ```bash
