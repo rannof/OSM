@@ -171,15 +171,15 @@ class OSM(object):
 
     def tile2path(self, tilex, tiley, zoom):
         'get tile path'
-        if not os.path.exists(os.sep.join([self.tilearchive, self.tilepat.format(Z=zoom, X=tilex, Y=tiley)])):
+        if not os.path.exists(os.path.normpath(os.sep.join([self.tilearchive, self.tilepat.format(Z=zoom, X=tilex, Y=tiley)]))):
             return self.tileurl + self.tilepat.format(Z=zoom, X=tilex, Y=tiley)  # download if not archived
         else:
-            return os.sep.join([self.tilearchive, self.tilepat.format(Z=zoom, X=tilex, Y=tiley)])  # get form archive
+            return os.path.normpath(os.sep.join([self.tilearchive, self.tilepat.format(Z=zoom, X=tilex, Y=tiley)]))  # get form archive
 
     def tilepath2zoomxy(self, tile):
         'convert tile path to lat-lon indices and zoom'
-        tileorder = os.path.splitext(self.tilepat.replace('{', '').replace('}', ''))[0].split(os.sep)[-3:]
-        tilexyz = dict(zip(tileorder, os.path.splitext(tile)[0].split(os.sep)[-3:]))
+        tileorder = os.path.splitext(self.tilepat.replace('{', '').replace('}', ''))[0].split('/')[-3:]
+        tilexyz = dict(zip(tileorder, os.path.splitext(os.path.normpath(tile))[0].split(os.sep)[-3:]))
         return int(tilexyz['X']), int(tilexyz['Y']), int(tilexyz['Z'])
 
     def gettiles(self, lonmin, lonmax, latmin, latmax):
