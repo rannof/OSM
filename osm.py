@@ -247,7 +247,8 @@ class OSM(object):
             else:
                 im = self.cashedtiles[tID]
             self.ax._set_artist_props(im)
-            self.ax.images.append(im)  # add image to axes
+            # self.ax.images.append(im)  # add image to axes
+            self.ax.add_artist(im)
             self.currentimages.append(im)  # add image to current images list
             log.debug('add {im} to cache'.format(im=im))
         self.ax.stale = True
