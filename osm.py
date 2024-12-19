@@ -49,7 +49,7 @@ class OSM(object):
     lonmin = -180.0
     maxlevel = 17
     maxtilecash = 500
-    def __init__(self, ax, tileurl=TILEURL, tilepat=TILEPAT, tilearchive=TILESARCHIVE, mplconnect=True):
+    def __init__(self, ax, tileurl=TILEURL, tilepat=TILEPAT, tilearchive=TILESARCHIVE, mplconnect=True, tms=False, user=None, password=None):
         # constants and defaults
         self.cashedtiles = {}
         self.tilesorder = []
@@ -64,10 +64,17 @@ class OSM(object):
         self.ax = ax  # where to plot tiles
         self.ax.set_aspect('equal') # make sure it is equale aspect
         self.canvas = self.ax.figure.canvas
+        # mpl connected cid
+        self.cid = []
         if mplconnect:
             self.mplconnect()
         self._button = False
+        self.tms = tms  # needed because the origin of coordinates of vanilla L.TileLayers is the top left corner, so the Y coordinate goes down. In TMS, the origin of coordinates is the bottom left corner so the Y coordinate goes up.
+        self.user = user
+        self.password = password
         self.http = Http()
+        if self.user and self.password:
+            self.http.add_credentials(user, password)
         self.tileurl = tileurl
         self.tilepat = tilepat
         if not os.path.exists(tilearchive):
@@ -76,12 +83,19 @@ class OSM(object):
         self.tilearchive = tilearchive
         # Add copyright text
         self.ax.text(0.99, 0.01, 'Leaflet | Tiles ' + u'\N{COPYRIGHT SIGN}' + 'Esri', color='#555555', ha='right', transform=ax.transAxes, name='Helvetica', fontsize=8, zorder=999)
-   
+
     def mplconnect(self):
-        self.canvas.mpl_connect('draw_event', self.draw)
-        self.canvas.mpl_connect('button_press_event', self.click)
-        self.canvas.mpl_connect('button_release_event', self.unclick)        
-        
+        self.cid.append(
+            self.canvas.mpl_connect('draw_event', self.draw))
+        self.cid.append(
+            self.canvas.mpl_connect('button_press_event', self.click))
+        self.cid.append(
+            self.canvas.mpl_connect('button_release_event', self.unclick))
+
+    def mpldisconnect(self):
+        while self.cid:
+            self.canvas.mpl_disconnect(self.cid.pop(0))
+
     def click(self,event):
         self._button = self.canvas._button
 
@@ -94,6 +108,8 @@ class OSM(object):
         y0, y1, x0, x1 = limits  # get tile extent
         try:
             data = np.array(Image.open(datafile))  # read tile image and convert to 2D array
+            if data.shape[-1] == 2:
+                data = np.repeat(data, [3,1], 2)  # for LA type (gray and alpha)
         except IOError:
             log.error("Bad image file: {}. Please remove the file for next time.".format(datafile))
             data = np.zeros((256, 256, 3))  # use black image with red X.
@@ -158,12 +174,18 @@ class OSM(object):
 
     def lat2tiley(self, lat, zoom):
         'calculate tile latitude index at zoom level'
-        lata = lat * np.pi / 180.0
+        if self.tms:
+            lata = -lat * np.pi / 180.0
+        else:
+            lata = lat * np.pi / 180.0
         return int(((1 - np.log(np.tan(lata) + 1.0 / np.cos(lata)) / np.pi) / 2.0 * 2**zoom))
 
     def tiley2lims(self, tiley, zoom):
         'calculate tile latitude limits at zoom level'
-        return np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * (tiley + 1) / 2.0**zoom)))), np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * tiley / 2.0**zoom))))
+        if self.tms:
+            return -np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * tiley / 2.0**zoom)))), -np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * (tiley + 1) / 2.0**zoom))))
+        else:
+            return np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * (tiley + 1) / 2.0**zoom)))), np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * tiley / 2.0**zoom))))
 
     def tiles2lims(self, tilex, tiley, zoom):
         'calculate tile limits at zoom level'
@@ -198,6 +220,8 @@ class OSM(object):
         maxtilex = self.lon2tilex(lonmax, i)
         mintiley = self.lat2tiley(latmax, i)
         maxtiley = self.lat2tiley(latmin, i)
+        if self.tms:
+            mintiley, maxtiley = maxtiley, mintiley
         tiles = []
         # get the list of tiles at indices limits
         for x in range(mintilex, maxtilex + 1):
@@ -224,6 +248,8 @@ class OSM(object):
                     except Exception as ex: # in case of disconnection
                         log.warning(ex)
                         self.http = Http()
+                        if self.user and self.password:
+                            self.http.add_credentials(self.user, self.password)
                         datafile = StringIO(self.http.request(t)[1])
                     if self.tilearchive:  # archive tile if we set the archive
                         d = datafile.read()  # read the downloaded data from stream
@@ -248,7 +274,7 @@ class OSM(object):
                 im = self.cashedtiles[tID]
             self.ax._set_artist_props(im)
             # self.ax.images.append(im)  # add image to axes
-            self.ax.add_artist(im) # add image to axes for modern matplotlib 
+            self.ax.add_artist(im)  # add image to axes for modern matplotlib
             self.currentimages.append(im)  # add image to current images list
             log.debug('add {im} to cache'.format(im=im))
         self.ax.stale = True
